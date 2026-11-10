@@ -209,6 +209,8 @@ class MainActivity : Activity() {
                 note.text = image.description
                 name.setText(image.title.substringBefore(' '))
                 disk.setText(image.defaultDiskGb.toString())
+                // Graphical installers need far more memory than a text console.
+                if (image.downloadMb > 2000) ram.setText(minOf(maxRam, maxOf(defaultRam, 4096)).toString())
                 password.isEnabled = image.kind == ImageKind.CLOUD_IMAGE
             }
 
@@ -267,8 +269,17 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancel") { _, _ -> cancelled.set(true) }
             .show()
 
+        // Multi-gigabyte downloads must not stall because the screen timed out.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         Thread {
             val result = runCatching {
+                val imageFile = store.imageFile(image)
+                val partial = java.io.File(imageFile.path + ".part").length() / 1_000_000
+                val neededMb = (if (imageFile.isFile) 0L else image.downloadMb - partial) + 1024
+                val freeMb = filesDir.usableSpace / 1_000_000
+                check(freeMb >= neededMb) {
+                    "Not enough free storage: this needs about $neededMb MB and only $freeMb MB is free."
+                }
                 Runtime.ensureInstalled(this)
                 Downloader.download(image.url, store.imageFile(image), cancelled) { done, total ->
                     handler.post {
@@ -291,6 +302,7 @@ class MainActivity : Activity() {
                 store.save(vm)
             }
             handler.post {
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 dialog.dismiss()
                 lastSignature = ""
                 result.onFailure {

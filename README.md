@@ -5,13 +5,14 @@ VirtualBox-style app: pick an operating system, set memory, cores and disk
 size, and it downloads the image, creates the disk and boots it with a bundled
 QEMU. The VM's screen and keyboard are built into the app.
 
-Status: early. Ubuntu 24.04 and Alpine 3.22 boot to a working text login with
-networking. There is no graphical desktop set up inside the guest yet.
+Status: early. Ubuntu 24.04 (cloud image) and Alpine 3.22 boot to a working text
+login with networking. Ubuntu Desktop 24.04 and 26.04 installer ISOs are in the
+list but have not been tested end to end yet.
 
 ## Install on a tablet
 
 1. On the tablet, open the [Releases page](../../releases/latest) and download
-   `LinPad-0.1.1-arm64.apk`.
+   `LinPad-0.2-arm64.apk`.
 2. Open the downloaded file. Android will ask you to allow your browser (or
    Files app) to install unknown apps; allow it, then tap Install.
 3. If Play Protect warns about an unrecognised developer, choose

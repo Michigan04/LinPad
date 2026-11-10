@@ -20,6 +20,8 @@ data class OsImage(
     val fileName: String,
     val kind: ImageKind,
     val defaultDiskGb: Int,
+    /** Approximate download size, used to check free space before starting. */
+    val downloadMb: Int,
 )
 
 /** ARM64 guests only: the same images run in the x86_64 emulator and on ARM tablets. */
@@ -33,6 +35,29 @@ object Catalog {
             fileName = "noble-server-cloudimg-arm64.img",
             kind = ImageKind.CLOUD_IMAGE,
             defaultDiskGb = 16,
+            downloadMb = 620,
+        ),
+        OsImage(
+            id = "ubuntu-desktop-26.04-iso",
+            title = "Ubuntu Desktop 26.04 LTS (installer ISO)",
+            description = "Official graphical installer, 3.9 GB download. Needs 4096 MB memory or more " +
+                "and about 15 GB free on this device. Slow under emulation.",
+            url = "https://cdimage.ubuntu.com/releases/26.04/release/ubuntu-26.04.1-desktop-arm64.iso",
+            fileName = "ubuntu-26.04.1-desktop-arm64.iso",
+            kind = ImageKind.INSTALLER_ISO,
+            defaultDiskGb = 25,
+            downloadMb = 3970,
+        ),
+        OsImage(
+            id = "ubuntu-desktop-24.04-iso",
+            title = "Ubuntu Desktop 24.04 LTS (installer ISO)",
+            description = "Official graphical installer, 3.7 GB download. Needs 4096 MB memory or more " +
+                "and about 15 GB free on this device. Slow under emulation.",
+            url = "https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.5-desktop-arm64.iso",
+            fileName = "ubuntu-24.04.5-desktop-arm64.iso",
+            kind = ImageKind.INSTALLER_ISO,
+            defaultDiskGb = 25,
+            downloadMb = 3780,
         ),
         OsImage(
             id = "alpine-3.22",
@@ -42,6 +67,7 @@ object Catalog {
             fileName = "alpine-virt-3.22.2-aarch64.iso",
             kind = ImageKind.INSTALLER_ISO,
             defaultDiskGb = 4,
+            downloadMb = 80,
         ),
     )
 
