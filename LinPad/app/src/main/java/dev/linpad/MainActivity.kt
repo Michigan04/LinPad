@@ -3,7 +3,10 @@ package dev.linpad
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -25,6 +28,8 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import java.io.File
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** VM library: create, start, open and delete virtual machines. */
@@ -33,6 +38,12 @@ class MainActivity : Activity() {
     private lateinit var list: LinearLayout
     private val handler = Handler(Looper.getMainLooper())
     private var lastSignature = ""
+
+    /** An ISO file the user picked from their own storage for the VM being created. */
+    private class PickedIso(val uri: Uri, val name: String, val sizeBytes: Long)
+
+    private var pickedIso: PickedIso? = null
+    private var onIsoPicked: ((PickedIso?) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -151,7 +162,10 @@ class MainActivity : Activity() {
             toast("Shut the VM down before deleting it.")
             return
         }
-        AlertDialog.Builder(this)
+        // The downloaded or imported image can go too, unless another VM still needs it.
+        val imageFile = Catalog.byId(vm.osId)?.let { store.imageFile(it) }?.takeIf { it.isFile }
+        val shared = store.list().any { it.id != vm.id && it.osId == vm.osId }
+        val builder = AlertDialog.Builder(this)
             .setTitle("Delete ${vm.name}?")
             .setMessage("Its disk and everything on it will be permanently deleted.")
             .setPositiveButton("Delete") { _, _ ->
@@ -159,7 +173,90 @@ class MainActivity : Activity() {
                 lastSignature = ""
             }
             .setNegativeButton("Cancel", null)
-            .show()
+        if (imageFile != null && !shared) {
+            builder.setNeutralButton("Delete + ${imageFile.length() / 1_000_000} MB image") { _, _ ->
+                store.delete(vm.id)
+                imageFile.delete()
+                lastSignature = ""
+            }
+        }
+        builder.show()
+    }
+
+    // ---- ISO from the user's own storage -------------------------------------------------
+
+    private fun pickIso() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),
+            REQUEST_ISO,
+        )
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_ISO) return
+        val uri = data?.data?.takeIf { resultCode == RESULT_OK }
+        val picked = uri?.let {
+            var name = "disc.iso"
+            var size = -1L
+            runCatching {
+                contentResolver.query(it, null, null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val n = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (n >= 0) c.getString(n)?.let { v -> name = v }
+                        val s = c.getColumnIndex(OpenableColumns.SIZE)
+                        if (s >= 0 && !c.isNull(s)) size = c.getLong(s)
+                    }
+                }
+            }
+            PickedIso(it, name, size)
+        }
+        onIsoPicked?.invoke(picked)
+    }
+
+    /** File name the picked ISO gets inside the app; QEMU option strings cannot hold commas or spaces. */
+    private fun importName(picked: PickedIso): String {
+        val clean = picked.name.replace(Regex("[^A-Za-z0-9._-]"), "_").takeLast(80).ifEmpty { "disc.iso" }
+        val existing = File(store.imagesDir, clean)
+        // Same name and size: the earlier import is reused. Same name, different file: keep both.
+        return if (existing.isFile && existing.length() != picked.sizeBytes) {
+            "${System.currentTimeMillis() / 1000}-$clean"
+        } else {
+            clean
+        }
+    }
+
+    private fun looksLikePcIso(name: String) =
+        Regex("amd64|x86_64|x86-64|x64|i386|i686", RegexOption.IGNORE_CASE).containsMatchIn(name)
+
+    private fun importIso(source: PickedIso, target: File, cancelled: AtomicBoolean, progress: (Long, Long) -> Unit) {
+        if (target.isFile && target.length() > 0) return
+        target.parentFile?.mkdirs()
+        val part = File(target.path + ".part")
+        val input = contentResolver.openInputStream(source.uri) ?: throw IOException("Could not open the selected file")
+        input.use { from ->
+            part.outputStream().use { to ->
+                val buffer = ByteArray(1 shl 20)
+                var done = 0L
+                var lastReport = 0L
+                while (!cancelled.get()) {
+                    val n = from.read(buffer)
+                    if (n < 0) break
+                    to.write(buffer, 0, n)
+                    done += n
+                    val now = System.currentTimeMillis()
+                    if (now - lastReport > 250) {
+                        lastReport = now
+                        progress(done, source.sizeBytes)
+                    }
+                }
+            }
+        }
+        if (cancelled.get()) {
+            part.delete()
+            throw IOException("Import cancelled")
+        }
+        if (!part.renameTo(target)) throw IOException("Could not move the ISO into place")
     }
 
     // ---- create --------------------------------------------------------------------------
@@ -178,9 +275,11 @@ class MainActivity : Activity() {
         val os = Spinner(this).apply {
             adapter = ArrayAdapter(
                 this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
-                Catalog.images.map { it.title },
+                Catalog.images.map { it.title } + "ISO file from this device…",
             )
         }
+        val customIndex = Catalog.images.size
+        pickedIso = null
         val note = text("", 13f, MUTED)
         fun field(label: String, value: String, type: Int): EditText {
             form.addView(text(label, 13f, MUTED).apply { setPadding(0, dp(10), 0, 0) })
@@ -205,6 +304,24 @@ class MainActivity : Activity() {
 
         os.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: View?, position: Int, id: Long) {
+                if (position == customIndex) {
+                    password.isEnabled = false
+                    note.text = "Choose an ARM64 (aarch64) installer ISO. ISOs made for PCs (amd64, x86_64) cannot boot here."
+                    onIsoPicked = { picked ->
+                        if (picked != null) {
+                            pickedIso = picked
+                            val mb = if (picked.sizeBytes > 0) " (${picked.sizeBytes / 1_000_000} MB)" else ""
+                            note.text = "${picked.name}$mb. It will be copied into LinPad, so it needs that much " +
+                                "free space again; you can delete the original afterwards."
+                            name.setText(picked.name.substringBeforeLast('.').take(24))
+                            disk.setText("16")
+                        } else if (pickedIso == null) {
+                            os.setSelection(0)
+                        }
+                    }
+                    pickIso()
+                    return
+                }
                 val image = Catalog.images[position]
                 note.text = image.description
                 name.setText(image.title.substringBefore(' '))
@@ -228,12 +345,17 @@ class MainActivity : Activity() {
         dialog.setOnShowListener {
             // Validate before dismissing, so mistakes do not lose what was typed.
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val image = Catalog.images[os.selectedItemPosition]
+                val custom = os.selectedItemPosition == customIndex
+                val picked = pickedIso.takeIf { custom }
+                val image = if (custom) picked?.let { Catalog.custom(importName(it)) } else Catalog.images[os.selectedItemPosition]
                 val ramMb = ram.text.toString().toIntOrNull()
                 val cpuCount = cpus.text.toString().toIntOrNull()
                 val diskGb = disk.text.toString().toIntOrNull()
                 val vmName = name.text.toString().replace(",", " ").trim()
                 val error = when {
+                    image == null -> "Choose an ISO file first."
+                    picked != null && looksLikePcIso(picked.name) ->
+                        "This looks like a PC (amd64/x86) ISO. LinPad can only boot ARM64 (aarch64) ISOs."
                     vmName.isEmpty() -> "Give the VM a name."
                     ramMb == null || ramMb !in 256..maxRam -> "Memory must be between 256 and $maxRam MB."
                     cpuCount == null || cpuCount !in 1..hostCpus -> "CPU cores must be between 1 and $hostCpus."
@@ -242,18 +364,21 @@ class MainActivity : Activity() {
                         "Set a password. You will need it to log in."
                     else -> null
                 }
-                if (error != null) {
-                    toast(error)
+                if (error != null || image == null) {
+                    toast(error ?: "Choose an ISO file first.")
                 } else {
                     dialog.dismiss()
-                    create(VmConfig(store.newId(), vmName, image.id, ramMb!!, cpuCount!!, diskGb!!, password.text.toString()), image)
+                    create(
+                        VmConfig(store.newId(), vmName, image.id, ramMb!!, cpuCount!!, diskGb!!, password.text.toString()),
+                        image, picked,
+                    )
                 }
             }
         }
         dialog.show()
     }
 
-    private fun create(vm: VmConfig, image: OsImage) {
+    private fun create(vm: VmConfig, image: OsImage, source: PickedIso? = null) {
         val cancelled = AtomicBoolean(false)
         val message = text("Preparing…", 14f, Color.WHITE)
         val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000 }
@@ -274,24 +399,42 @@ class MainActivity : Activity() {
         Thread {
             val result = runCatching {
                 val imageFile = store.imageFile(image)
-                val partial = java.io.File(imageFile.path + ".part").length() / 1_000_000
-                val neededMb = (if (imageFile.isFile) 0L else image.downloadMb - partial) + 1024
+                val partFile = File(imageFile.path + ".part")
+                val incomingMb = when {
+                    imageFile.isFile -> 0L
+                    source != null -> maxOf(0L, source.sizeBytes) / 1_000_000
+                    else -> image.downloadMb - partFile.length() / 1_000_000
+                }
+                val neededMb = incomingMb + 1024
                 val freeMb = filesDir.usableSpace / 1_000_000
                 check(freeMb >= neededMb) {
                     "Not enough free storage: this needs about $neededMb MB and only $freeMb MB is free."
                 }
                 Runtime.ensureInstalled(this)
-                Downloader.download(image.url, store.imageFile(image), cancelled) { done, total ->
+                val verb = if (source != null) "Copying" else "Downloading"
+                val progress = { done: Long, total: Long ->
                     handler.post {
                         val mb = done / 1_000_000
                         if (total > 0) {
                             bar.isIndeterminate = false
                             bar.progress = (done * 1000 / total).toInt()
-                            message.text = "Downloading ${image.title}: $mb of ${total / 1_000_000} MB"
+                            message.text = "$verb ${image.title}: $mb of ${total / 1_000_000} MB"
                         } else {
                             bar.isIndeterminate = true
-                            message.text = "Downloading ${image.title}: $mb MB"
+                            message.text = "$verb ${image.title}: $mb MB"
                         }
+                    }
+                    Unit
+                }
+                if (source != null) {
+                    importIso(source, imageFile, cancelled, progress)
+                } else {
+                    try {
+                        Downloader.download(image.url, imageFile, cancelled, progress)
+                    } catch (e: IOException) {
+                        if (image.fallbackUrl.isEmpty() || cancelled.get()) throw e
+                        partFile.delete()
+                        Downloader.download(image.fallbackUrl, imageFile, cancelled, progress)
                     }
                 }
                 handler.post {
@@ -342,5 +485,6 @@ class MainActivity : Activity() {
 
     companion object {
         private const val MUTED = 0xFF8B949E.toInt()
+        private const val REQUEST_ISO = 2
     }
 }

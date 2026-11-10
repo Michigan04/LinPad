@@ -84,6 +84,12 @@ class VmActivity : Activity(), RfbClient.Listener {
         tool("Keyboard") { view.showKeyboard() }
         tool("Esc") { view.tapKey(Keysyms.ESCAPE) }
         tool("Tab") { view.tapKey(Keysyms.TAB) }
+        // Boot menus and text installers are driven by arrow keys, which phone keyboards lack.
+        tool("←") { view.tapKey(0xff51) }
+        tool("↓") { view.tapKey(0xff54) }
+        tool("↑") { view.tapKey(0xff52) }
+        tool("→") { view.tapKey(0xff53) }
+        tool("Enter") { view.tapKey(Keysyms.RETURN) }
         ctrlButton = tool("Ctrl") { view.stickyCtrl = !view.stickyCtrl; refreshSticky() }
         altButton = tool("Alt") { view.stickyAlt = !view.stickyAlt; refreshSticky() }
         tool("Del") { view.tapKey(Keysyms.DELETE) }

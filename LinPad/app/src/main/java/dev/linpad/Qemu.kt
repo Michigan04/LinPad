@@ -116,7 +116,8 @@ object Qemu {
         )
         if (image != null) {
             when (image.kind) {
-                ImageKind.INSTALLER_ISO -> args += listOf(
+                // The disc is optional once the system is installed, so its file may be gone.
+                ImageKind.INSTALLER_ISO -> if (store.imageFile(image).isFile) args += listOf(
                     "-device", "virtio-scsi-pci,id=scsi0",
                     "-drive", "if=none,id=cd0,format=raw,readonly=on,media=cdrom,file=${store.imageFile(image)}",
                     "-device", "scsi-cd,drive=cd0,bootindex=1",

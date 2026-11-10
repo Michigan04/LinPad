@@ -22,6 +22,8 @@ data class OsImage(
     val defaultDiskGb: Int,
     /** Approximate download size, used to check free space before starting. */
     val downloadMb: Int,
+    /** Tried when [url] fails, for mirrors that move files after a point release. */
+    val fallbackUrl: String = "",
 )
 
 /** ARM64 guests only: the same images run in the x86_64 emulator and on ARM tablets. */
@@ -60,6 +62,18 @@ object Catalog {
             downloadMb = 3780,
         ),
         OsImage(
+            id = "debian-13-netinst",
+            title = "Debian 13 (network installer ISO)",
+            description = "Small installer, 0.7 GB download. Choose a light desktop such as Xfce or LXQt " +
+                "during setup; packages are fetched from the internet while installing.",
+            url = "https://cdimage.debian.org/debian-cd/current/arm64/iso-cd/debian-13.7.0-arm64-netinst.iso",
+            fallbackUrl = "https://cdimage.debian.org/cdimage/archive/13.7.0/arm64/iso-cd/debian-13.7.0-arm64-netinst.iso",
+            fileName = "debian-13.7.0-arm64-netinst.iso",
+            kind = ImageKind.INSTALLER_ISO,
+            defaultDiskGb = 16,
+            downloadMb = 730,
+        ),
+        OsImage(
             id = "alpine-3.22",
             title = "Alpine Linux 3.22",
             description = "Tiny live/installer ISO (about 70 MB). Login: root, no password",
@@ -71,7 +85,23 @@ object Catalog {
         ),
     )
 
-    fun byId(id: String): OsImage? = images.firstOrNull { it.id == id }
+    private const val CUSTOM_PREFIX = "iso:"
+
+    /** An ISO the user imported from their own storage; the id carries its file name. */
+    fun custom(fileName: String) = OsImage(
+        id = CUSTOM_PREFIX + fileName,
+        title = fileName,
+        description = "",
+        url = "",
+        fileName = fileName,
+        kind = ImageKind.INSTALLER_ISO,
+        defaultDiskGb = 16,
+        downloadMb = 0,
+    )
+
+    fun byId(id: String): OsImage? =
+        if (id.startsWith(CUSTOM_PREFIX)) custom(id.removePrefix(CUSTOM_PREFIX))
+        else images.firstOrNull { it.id == id }
 }
 
 data class VmConfig(
