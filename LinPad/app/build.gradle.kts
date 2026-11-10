@@ -1,0 +1,51 @@
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    // The package name must stay exactly 10 characters: tools/bundle.py rewrites
+    // "com.termux" to it inside the prebuilt QEMU binaries.
+    namespace = "dev.linpad"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "dev.linpad"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "0.1"
+    }
+
+    flavorDimensions += "abi"
+    productFlavors {
+        create("x64") {
+            dimension = "abi"
+            ndk { abiFilters += "x86_64" }
+        }
+        create("arm64") {
+            dimension = "abi"
+            ndk { abiFilters += "arm64-v8a" }
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // QEMU is exec()'d from the native library directory, so it must be extracted to disk.
+            useLegacyPackaging = true
+            keepDebugSymbols += "**/*.so"
+        }
+    }
+
+    androidResources {
+        noCompress += "zip"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}

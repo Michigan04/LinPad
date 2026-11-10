@@ -1,0 +1,45 @@
+{
+    "version": "2.0.0",
+    "options": {
+        "shell": {
+            "executable": "powershell.exe",
+            "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+        }
+    },
+    "tasks": [
+        {
+            "label": "LinPad: start emulator",
+            "type": "shell",
+            "command": ". ${workspaceFolder}\\env.ps1; emulator -avd LinPadTablet -no-snapshot -no-boot-anim",
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "LinPad: build + install on emulator (x64)",
+            "type": "shell",
+            "command": ". ${workspaceFolder}\\env.ps1; cd ${workspaceFolder}\\LinPad; gradle installX64Debug; if ($?) { adb shell am start -n dev.linpad/.MainActivity }",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "LinPad: build tablet APK (arm64)",
+            "type": "shell",
+            "command": ". ${workspaceFolder}\\env.ps1; cd ${workspaceFolder}\\LinPad; gradle assembleArm64Debug; if ($?) { Get-Item app\\build\\outputs\\apk\\arm64\\debug\\*.apk }",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "LinPad: install on connected tablet (arm64)",
+            "type": "shell",
+            "command": ". ${workspaceFolder}\\env.ps1; cd ${workspaceFolder}\\LinPad; gradle installArm64Debug",
+            "problemMatcher": []
+        },
+        {
+            "label": "LinPad: app log",
+            "type": "shell",
+            "command": ". ${workspaceFolder}\\env.ps1; adb logcat --pid=$(adb shell pidof dev.linpad)",
+            "isBackground": true,
+            "problemMatcher": []
+        }
+    ]
+}

@@ -1,0 +1,17 @@
+# Toolchain, caches and emulator state: recreated locally, never committed.
+/sdk/
+/avd/
+/avd-home/
+/downloads/
+/gradle-8.11.1/
+/gradle-home/
+/stage/
+/tmp/
+
+# Build output
+build/
+.gradle/
+.kotlin/
+__pycache__/
+local.properties
+*.apk
