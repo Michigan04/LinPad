@@ -1,4 +1,4 @@
-# LinPad
+﻿# LinPad
 
 Run Linux virtual machines on an Android tablet or phone. LinPad is a small
 VirtualBox-style app: pick an operating system, set memory, cores and disk
@@ -11,11 +11,11 @@ networking. There is no graphical desktop set up inside the guest yet.
 ## Install on a tablet
 
 1. On the tablet, open the [Releases page](../../releases/latest) and download
-   `LinPad-0.1-arm64.apk`.
+   `LinPad-0.1.1-arm64.apk`.
 2. Open the downloaded file. Android will ask you to allow your browser (or
    Files app) to install unknown apps; allow it, then tap Install.
 3. If Play Protect warns about an unrecognised developer, choose
-   "Install anyway". The APK is a debug build signed with a development key.
+   "Install anyway". The APK is signed with a development key, not a store key.
 
 Requirements: a 64-bit ARM device (almost every tablet and phone from the last
 several years) running Android 8.0 or newer, about 1 GB of free storage for

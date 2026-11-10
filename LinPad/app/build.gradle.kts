@@ -17,6 +17,23 @@ android {
         versionName = "0.1"
     }
 
+    signingConfigs {
+        // Sign with every scheme: some manufacturers' installers reject v2-only packages.
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
+    }
+    buildTypes {
+        // Sideloadable build: not debuggable, signed with the development key until
+        // there is a real release key.
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
     flavorDimensions += "abi"
     productFlavors {
         create("x64") {
